@@ -7,6 +7,9 @@
 import json
 import time
 import sys
+import hashlib
+import random
+from collections import defaultdict
 from datetime import datetime
 
 # ── Данные по умолчанию (если Google Trends недоступен) ──────────────
@@ -66,12 +69,42 @@ MODEL_GROUPS = [
 ]
 
 
+def make_fallback_trend(brand, base_value, length=12):
+    """Детерминированный тренд по хэшу имени — одинаковый при каждом запуске."""
+    seed = int(hashlib.md5(brand.encode()).hexdigest()[:8], 16)
+    rng = random.Random(seed)
+    values = []
+    v = base_value * (0.7 + rng.random() * 0.3)
+    for _ in range(length):
+        v = max(5, min(100, v + (rng.random() - 0.47) * 12))
+        values.append(round(v))
+    values[-1] = base_value
+    return values
+
+
+def resample_monthly(df, columns):
+    """Группируем недельные данные pytrends по месяцам, берём последние 12."""
+    monthly = defaultdict(lambda: defaultdict(list))
+    for date, row in df.iterrows():
+        key = (date.year, date.month)
+        for col in columns:
+            if col in row.index:
+                monthly[key][col].append(int(row[col]))
+    sorted_keys = sorted(monthly.keys())[-12:]
+    result = {col: [] for col in columns}
+    for key in sorted_keys:
+        for col in columns:
+            vals = monthly[key].get(col, [0])
+            result[col].append(round(sum(vals) / len(vals)) if vals else 0)
+    return result
+
+
 def fetch_trends():
     try:
         from pytrends.request import TrendReq
     except ImportError:
         print("pytrends не установлен, используем fallback данные")
-        return FALLBACK
+        return {**FALLBACK, "trend_history": {}}
 
     pytrends = TrendReq(hl="ru-RU", tz=300, timeout=(10, 30), retries=3, backoff_factor=1)
     brands, models = {}, {}
@@ -117,7 +150,24 @@ def fetch_trends():
     brands = {k: round(v / max_b * 100) for k, v in brands.items()}
     models = {k: round(v / max_m * 100) for k, v in models.items()}
 
-    return {"brands": brands, "models": models}
+    # Получаем реальную историю топ-5 брендов за 12 месяцев
+    top5 = [k for k, _ in sorted(brands.items(), key=lambda x: x[1], reverse=True)[:5]]
+    trend_history = {}
+    try:
+        pytrends.build_payload(top5, cat=47, timeframe="today 12-m", geo="UZ")
+        time.sleep(3)
+        df12 = pytrends.interest_over_time()
+        if not df12.empty:
+            trend_history = resample_monthly(df12, top5)
+            print(f"  История трендов получена: {len(list(trend_history.values())[0])} месяцев")
+    except Exception as e:
+        print(f"  Ошибка истории трендов: {e}")
+
+    # Если история не получена — используем детерминированный fallback
+    if not trend_history:
+        trend_history = {b: make_fallback_trend(b, brands[b]) for b in top5}
+
+    return {"brands": brands, "models": models, "trend_history": trend_history}
 
 
 def build_html(data):
@@ -125,6 +175,12 @@ def build_html(data):
     date_str = now.strftime("%d.%m.%Y %H:%M") + " UTC"
 
     brands_json = json.dumps(data["brands"], ensure_ascii=False)
+    # Реальная история трендов (или детерминированный fallback)
+    trend_history = data.get("trend_history", {})
+    if not trend_history:
+        top5 = sorted(data["brands"].items(), key=lambda x: x[1], reverse=True)[:5]
+        trend_history = {b: make_fallback_trend(b, v) for b, v in top5}
+    trend_json = json.dumps(trend_history, ensure_ascii=False)
     # Для моделей добавляем бренд в ключ: "Cobalt (Chevrolet)"
     models_labeled = {
         f"{model} ({MODEL_BRANDS.get(model, '?')})": val
@@ -256,16 +312,16 @@ const C=['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','
 const BRANDS={brands_json};
 const MODELS={models_json};
 const MODELS_CHART={models_chart_json};
+const TREND_HISTORY={trend_json};
 function sorted(obj,n=999){{return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n);}}
-function wave(base){{const o=[];let v=base*(0.65+Math.random()*0.35);for(let i=0;i<12;i++){{v=Math.max(5,Math.min(100,v+(Math.random()-0.47)*14));o.push(Math.round(v));}}o[11]=base;return o;}}
 function set(id,v){{document.getElementById(id).textContent=v;}}
 function renderBar(id,data,cols){{
   const top=sorted(data,13);
   new Chart(document.getElementById(id),{{type:'bar',data:{{labels:top.map(x=>x[0]),datasets:[{{data:top.map(x=>x[1]),backgroundColor:top.map((_,i)=>cols[i%cols.length]+'bb'),borderColor:top.map((_,i)=>cols[i%cols.length]),borderWidth:1,borderRadius:5,borderSkipped:false}}]}},options:{{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{{legend:{{display:false}},tooltip:{{callbacks:{{label:c=>` Индекс: ${{c.raw}}`}}}}}},scales:{{x:{{max:100,grid:{{color:'#f1f5f9'}},ticks:{{font:{{size:11}}}}}},y:{{grid:{{display:false}},ticks:{{font:{{size:12,weight:'600'}}}}}}}}}}  }});
 }}
 function renderTrend(){{
-  const top5=sorted(BRANDS,5);
-  new Chart(document.getElementById('trendChart'),{{type:'line',data:{{labels:MONTHS,datasets:top5.map(([name,val],i)=>({{label:name,data:wave(val),borderColor:C[i],backgroundColor:C[i]+'18',tension:0.45,fill:false,pointRadius:3,borderWidth:2.5}}))}},options:{{responsive:true,maintainAspectRatio:false,interaction:{{mode:'index',intersect:false}},plugins:{{legend:{{position:'top',labels:{{font:{{size:12}},usePointStyle:true,padding:14}}}}}},scales:{{y:{{min:0,max:100,grid:{{color:'#f8fafc'}},ticks:{{font:{{size:11}}}}}},x:{{grid:{{display:false}},ticks:{{font:{{size:11}}}}}}}}}}  }});
+  const entries=Object.entries(TREND_HISTORY);
+  new Chart(document.getElementById('trendChart'),{{type:'line',data:{{labels:MONTHS,datasets:entries.map(([name,vals],i)=>({{label:name,data:vals,borderColor:C[i],backgroundColor:C[i]+'18',tension:0.45,fill:false,pointRadius:3,borderWidth:2.5}}))}},options:{{responsive:true,maintainAspectRatio:false,interaction:{{mode:'index',intersect:false}},plugins:{{legend:{{position:'top',labels:{{font:{{size:12}},usePointStyle:true,padding:14}}}}}},scales:{{y:{{min:0,max:100,grid:{{color:'#f8fafc'}},ticks:{{font:{{size:11}}}}}},x:{{grid:{{display:false}},ticks:{{font:{{size:11}}}}}}}}}}  }});
 }}
 function renderTable(){{
   const rows=sorted(BRANDS);
