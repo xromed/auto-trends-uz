@@ -265,7 +265,7 @@ function renderBar(id,data,cols){{
 }}
 function renderTrend(){{
   const top5=sorted(BRANDS,5);
-  new Chart(document.getElementById('trendChart'),{{type:'line',data:{{labels:MONTHS,datasets:top5.map(([name,val],i)=>({label:name,data:wave(val),borderColor:C[i],backgroundColor:C[i]+'18',tension:0.45,fill:false,pointRadius:3,borderWidth:2.5}))}},options:{{responsive:true,maintainAspectRatio:false,interaction:{{mode:'index',intersect:false}},plugins:{{legend:{{position:'top',labels:{{font:{{size:12}},usePointStyle:true,padding:14}}}}}},scales:{{y:{{min:0,max:100,grid:{{color:'#f8fafc'}},ticks:{{font:{{size:11}}}}}},x:{{grid:{{display:false}},ticks:{{font:{{size:11}}}}}}}}}}  }});
+  new Chart(document.getElementById('trendChart'),{{type:'line',data:{{labels:MONTHS,datasets:top5.map(([name,val],i)=>({{label:name,data:wave(val),borderColor:C[i],backgroundColor:C[i]+'18',tension:0.45,fill:false,pointRadius:3,borderWidth:2.5}}))}},options:{{responsive:true,maintainAspectRatio:false,interaction:{{mode:'index',intersect:false}},plugins:{{legend:{{position:'top',labels:{{font:{{size:12}},usePointStyle:true,padding:14}}}}}},scales:{{y:{{min:0,max:100,grid:{{color:'#f8fafc'}},ticks:{{font:{{size:11}}}}}},x:{{grid:{{display:false}},ticks:{{font:{{size:11}}}}}}}}}}  }});
 }}
 function renderTable(){{
   const rows=sorted(BRANDS);
