@@ -55,7 +55,7 @@
   </div>
   <div style="text-align:right">
     <div class="live-badge"><span class="live-dot"></span> Обновляется ежедневно</div>
-    <div class="update-label">Обновлено: 22.06.2026 10:16 UTC</div>
+    <div class="update-label">Обновлено: 22.06.2026 10:46 UTC</div>
   </div>
 </div>
 <div class="container">
@@ -105,7 +105,7 @@
   </div>
   <div class="footer-bar">
     Источник: <a href="https://trends.google.com" target="_blank">Google Trends</a> · Авто и транспорт · Узбекистан (UZ)<br>
-    Обновлено: 22.06.2026 10:16 UTC · GitHub Actions автоматика
+    Обновлено: 22.06.2026 10:46 UTC · GitHub Actions автоматика
   </div>
 </div>
 <script>
@@ -114,16 +114,16 @@ const C=['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','
 const BRANDS={"Chevrolet": 100, "Toyota": 69, "Hyundai": 56, "Haval": 52, "BYD": 46, "Kia": 42, "Chery": 38, "Geely": 31, "Lada": 27, "BMW": 22, "Mercedes": 20, "Honda": 18, "Daewoo": 16, "Nissan": 14, "Ravon": 11};
 const MODELS={"Cobalt (Chevrolet)": 100, "Nexia (Chevrolet)": 92, "Malibu (Chevrolet)": 77, "Tracker (Chevrolet)": 67, "Captiva (Chevrolet)": 62, "Onix (Chevrolet)": 56, "Camry (Toyota)": 51, "Damas (Chevrolet)": 46, "Tucson (Hyundai)": 41, "H6 (Haval)": 36, "Corolla (Toyota)": 33, "Sportage (Kia)": 31, "Vesta (Lada)": 26, "Tiggo (Chery)": 23, "RAV4 (Toyota)": 21, "Spark (Chevrolet)": 18, "Labo (Chevrolet)": 15, "Land Cruiser (Toyota)": 28, "Jolion (Haval)": 23, "Atto 3 (BYD)": 19, "Elantra (Hyundai)": 23, "Rio (Kia)": 21, "Atlas (Geely)": 15, "Granta (Lada)": 13, "Almera (Nissan)": 12, "Santa Fe (Hyundai)": 18, "Prado (Toyota)": 15, "Coolray (Geely)": 13, "Cerato (Kia)": 14, "CR-V (Honda)": 10};
 const MODELS_CHART={"Cobalt (Chevrolet)": 100, "Nexia (Chevrolet)": 92, "Malibu (Chevrolet)": 77, "Tracker (Chevrolet)": 67, "Captiva (Chevrolet)": 62, "Onix (Chevrolet)": 56, "Camry (Toyota)": 51, "Damas (Chevrolet)": 46, "Tucson (Hyundai)": 41, "H6 (Haval)": 36, "Corolla (Toyota)": 33, "Sportage (Kia)": 31, "Другие (18 моделей)": 18};
+const TREND_HISTORY={"Chevrolet": [76, 79, 84, 83, 79, 79, 76, 76, 72, 71, 75, 100], "Toyota": [56, 61, 65, 61, 57, 57, 61, 66, 66, 71, 77, 69], "Hyundai": [43, 47, 44, 43, 43, 46, 43, 41, 39, 43, 45, 56], "Haval": [38, 37, 39, 35, 33, 36, 32, 35, 40, 43, 41, 52], "BYD": [44, 45, 46, 43, 49, 45, 43, 43, 42, 46, 44, 46]};
 function sorted(obj,n=999){return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n);}
-function wave(base){const o=[];let v=base*(0.65+Math.random()*0.35);for(let i=0;i<12;i++){v=Math.max(5,Math.min(100,v+(Math.random()-0.47)*14));o.push(Math.round(v));}o[11]=base;return o;}
 function set(id,v){document.getElementById(id).textContent=v;}
 function renderBar(id,data,cols){
   const top=sorted(data,13);
   new Chart(document.getElementById(id),{type:'bar',data:{labels:top.map(x=>x[0]),datasets:[{data:top.map(x=>x[1]),backgroundColor:top.map((_,i)=>cols[i%cols.length]+'bb'),borderColor:top.map((_,i)=>cols[i%cols.length]),borderWidth:1,borderRadius:5,borderSkipped:false}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` Индекс: ${c.raw}`}}},scales:{x:{max:100,grid:{color:'#f1f5f9'},ticks:{font:{size:11}}},y:{grid:{display:false},ticks:{font:{size:12,weight:'600'}}}}}  });
 }
 function renderTrend(){
-  const top5=sorted(BRANDS,5);
-  new Chart(document.getElementById('trendChart'),{type:'line',data:{labels:MONTHS,datasets:top5.map(([name,val],i)=>({label:name,data:wave(val),borderColor:C[i],backgroundColor:C[i]+'18',tension:0.45,fill:false,pointRadius:3,borderWidth:2.5}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top',labels:{font:{size:12},usePointStyle:true,padding:14}}},scales:{y:{min:0,max:100,grid:{color:'#f8fafc'},ticks:{font:{size:11}}},x:{grid:{display:false},ticks:{font:{size:11}}}}}  });
+  const entries=Object.entries(TREND_HISTORY);
+  new Chart(document.getElementById('trendChart'),{type:'line',data:{labels:MONTHS,datasets:entries.map(([name,vals],i)=>({label:name,data:vals,borderColor:C[i],backgroundColor:C[i]+'18',tension:0.45,fill:false,pointRadius:3,borderWidth:2.5}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top',labels:{font:{size:12},usePointStyle:true,padding:14}}},scales:{y:{min:0,max:100,grid:{color:'#f8fafc'},ticks:{font:{size:11}}},x:{grid:{display:false},ticks:{font:{size:11}}}}}  });
 }
 function renderTable(){
   const rows=sorted(BRANDS);
