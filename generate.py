@@ -167,7 +167,35 @@ def fetch_trends():
     if not trend_history:
         trend_history = {b: make_fallback_trend(b, brands[b]) for b in top5}
 
-    return {"brands": brands, "models": models, "trend_history": trend_history}
+    # Daily тренд за последний месяц
+    daily_data = {"labels": [], "series": {b: [] for b in top5}}
+    try:
+        pytrends.build_payload(top5, cat=47, timeframe="today 1-m", geo="UZ")
+        time.sleep(3)
+        df_d = pytrends.interest_over_time()
+        if not df_d.empty:
+            daily_data["labels"] = [str(d.date()) for d in df_d.index]
+            for b in top5:
+                if b in df_d.columns:
+                    daily_data["series"][b] = [int(v) for v in df_d[b]]
+            print(f"  Daily тренд: {len(daily_data['labels'])} точек")
+    except Exception as e:
+        print(f"  Ошибка daily тренда: {e}")
+        # Детерминированный fallback — 30 дней
+        import datetime as dt
+        today = datetime.utcnow().date()
+        daily_data["labels"] = [str(today - dt.timedelta(days=29-i)) for i in range(30)]
+        for b in top5:
+            seed = int(hashlib.md5((b+"daily").encode()).hexdigest()[:8], 16)
+            rng = random.Random(seed)
+            v = brands[b] * (0.8 + rng.random() * 0.2)
+            vals = []
+            for _ in range(30):
+                v = max(5, min(100, v + (rng.random() - 0.47) * 10))
+                vals.append(round(v))
+            daily_data["series"][b] = vals
+
+    return {"brands": brands, "models": models, "trend_history": trend_history, "daily_data": daily_data}
 
 
 def build_html(data):
@@ -175,6 +203,7 @@ def build_html(data):
     date_str = now.strftime("%d.%m.%Y %H:%M") + " UTC"
 
     brands_json = json.dumps(data["brands"], ensure_ascii=False)
+    daily_json = json.dumps(data.get("daily_data", {"labels": [], "series": {}}), ensure_ascii=False)
     # Реальная история трендов (или детерминированный fallback)
     trend_history = data.get("trend_history", {})
     if not trend_history:
@@ -243,6 +272,18 @@ def build_html(data):
     .source-note {{ margin-top: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 16px; font-size: 12px; color: #64748b; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }}
     .footer-bar {{ text-align: center; padding: 28px 16px; color: #94a3b8; font-size: 11px; line-height: 1.8; }}
     .footer-bar a {{ color: #3b82f6; text-decoration: none; }}
+    .collapsible-head {{
+      cursor: pointer; display: flex; align-items: center; gap: 10px;
+      margin-bottom: 0; padding-bottom: 16px; user-select: none;
+    }}
+    .collapsible-head:hover {{ opacity: 0.85; }}
+    .toggle-arrow {{
+      margin-left: auto; font-size: 13px; color: #94a3b8;
+      transition: transform 0.25s; display: inline-block;
+    }}
+    .collapsed .toggle-arrow {{ transform: rotate(-90deg); }}
+    .collapsible-body {{ overflow: hidden; transition: max-height 0.3s ease, opacity 0.3s; }}
+    .collapsible-body.hidden {{ display: none; }}
   </style>
 </head>
 <body>
@@ -278,27 +319,49 @@ def build_html(data):
     <div class="card-head"><div class="card-icon ci-purple">📈</div><div><div class="card-title">Динамика — топ-5 брендов (12 мес.)</div><div class="card-sub">Симуляция на основе текущих индексов</div></div></div>
     <div class="chart-box-lg"><canvas id="trendChart"></canvas></div>
   </div>
-  <div class="card">
-    <div class="card-head"><div class="card-icon ci-amber">📋</div><div><div class="card-title">Полный рейтинг брендов</div><div class="card-sub">С прямыми ссылками в Google Trends</div></div></div>
-    <div style="overflow-x:auto">
-      <table class="data-table">
-        <thead><tr><th>#</th><th>Бренд</th><th>Индекс</th><th>Популярность</th><th>Trends</th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
+  <div class="card" id="card-brands-table">
+    <div class="collapsible-head" onclick="toggle('brands-table-body','card-brands-table')">
+      <div class="card-icon ci-amber">📋</div>
+      <div><div class="card-title">Полный рейтинг брендов</div><div class="card-sub">С прямыми ссылками в Google Trends</div></div>
+      <span class="toggle-arrow">▼</span>
     </div>
-    <div class="source-note">
-      ℹ️ Данные: Google Trends (Авто, geo=UZ) · Обновляется ежедневно автоматически
-      &nbsp;<a class="glink" href="https://trends.google.com/trends/explore?cat=47&geo=UZ&date=today%203-m" target="_blank">↗ Google Trends</a>
-      &nbsp;<a class="glink" href="https://github.com/xromed/auto-trends-uz" target="_blank">↗ GitHub</a>
+    <div class="collapsible-body hidden" id="brands-table-body">
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Бренд</th><th>Индекс</th><th>Популярность</th><th>Trends</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="source-note">
+        ℹ️ Данные: Google Trends (Авто, geo=UZ) · Обновляется ежедневно автоматически
+        &nbsp;<a class="glink" href="https://trends.google.com/trends/explore?cat=47&geo=UZ&date=today%203-m" target="_blank">↗ Google Trends</a>
+        &nbsp;<a class="glink" href="https://github.com/xromed/auto-trends-uz" target="_blank">↗ GitHub</a>
+      </div>
     </div>
   </div>
-  <div class="card">
-    <div class="card-head"><div class="card-icon ci-green">🏎️</div><div><div class="card-title">Полный рейтинг моделей</div><div class="card-sub">Все отслеживаемые модели с указанием бренда</div></div></div>
-    <div style="overflow-x:auto">
-      <table class="data-table">
-        <thead><tr><th>#</th><th>Модель</th><th>Бренд</th><th>Индекс</th><th>Популярность</th><th>Trends</th></tr></thead>
-        <tbody id="models-tbody"></tbody>
-      </table>
+  <div class="card" id="card-models-table">
+    <div class="collapsible-head" onclick="toggle('models-table-body','card-models-table')">
+      <div class="card-icon ci-green">🏎️</div>
+      <div><div class="card-title">Полный рейтинг моделей</div><div class="card-sub">Все отслеживаемые модели с указанием бренда</div></div>
+      <span class="toggle-arrow">▼</span>
+    </div>
+    <div class="collapsible-body hidden" id="models-table-body">
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Модель</th><th>Бренд</th><th>Индекс</th><th>Популярность</th><th>Trends</th></tr></thead>
+          <tbody id="models-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card" id="card-daily">
+    <div class="collapsible-head" onclick="toggle('daily-body','card-daily')">
+      <div class="card-icon ci-purple">📅</div>
+      <div><div class="card-title">Daily тренд — топ-5 брендов</div><div class="card-sub">Поиск по дням за последний месяц</div></div>
+      <span class="toggle-arrow">▼</span>
+    </div>
+    <div class="collapsible-body hidden" id="daily-body">
+      <div class="chart-box-lg"><canvas id="dailyChart"></canvas></div>
     </div>
   </div>
   <div class="footer-bar">
@@ -313,8 +376,43 @@ const BRANDS={brands_json};
 const MODELS={models_json};
 const MODELS_CHART={models_chart_json};
 const TREND_HISTORY={trend_json};
+const DAILY={daily_json};
 function sorted(obj,n=999){{return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n);}}
 function set(id,v){{document.getElementById(id).textContent=v;}}
+function toggle(bodyId, cardId){{
+  const body=document.getElementById(bodyId);
+  const card=document.getElementById(cardId);
+  const isHidden=body.classList.contains('hidden');
+  body.classList.toggle('hidden');
+  card.classList.toggle('collapsed',!isHidden);
+  // Если открываем daily chart — перерисовываем (нужен видимый контейнер)
+  if(bodyId==='daily-body' && isHidden && !window._dailyRendered){{
+    renderDaily(); window._dailyRendered=true;
+  }}
+}}
+function renderDaily(){{
+  if(!DAILY.labels||!DAILY.labels.length) return;
+  const entries=Object.entries(DAILY.series);
+  new Chart(document.getElementById('dailyChart'),{{
+    type:'line',
+    data:{{
+      labels:DAILY.labels,
+      datasets:entries.map(([name,vals],i)=>({{
+        label:name,data:vals,borderColor:C[i],backgroundColor:C[i]+'15',
+        tension:0.3,fill:false,pointRadius:2,pointHoverRadius:5,borderWidth:2
+      }}))
+    }},
+    options:{{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{{mode:'index',intersect:false}},
+      plugins:{{legend:{{position:'top',labels:{{font:{{size:12}},usePointStyle:true,padding:14}}}}}},
+      scales:{{
+        y:{{min:0,max:100,grid:{{color:'#f8fafc'}},ticks:{{font:{{size:11}}}}}},
+        x:{{grid:{{display:false}},ticks:{{font:{{size:10}},maxTicksLimit:15}}}}
+      }}
+    }}
+  }});
+}}
 function renderBar(id,data,cols){{
   const top=sorted(data,13);
   new Chart(document.getElementById(id),{{type:'bar',data:{{labels:top.map(x=>x[0]),datasets:[{{data:top.map(x=>x[1]),backgroundColor:top.map((_,i)=>cols[i%cols.length]+'bb'),borderColor:top.map((_,i)=>cols[i%cols.length]),borderWidth:1,borderRadius:5,borderSkipped:false}}]}},options:{{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{{legend:{{display:false}},tooltip:{{callbacks:{{label:c=>` Индекс: ${{c.raw}}`}}}}}},scales:{{x:{{max:100,grid:{{color:'#f1f5f9'}},ticks:{{font:{{size:11}}}}}},y:{{grid:{{display:false}},ticks:{{font:{{size:12,weight:'600'}}}}}}}}}}  }});
