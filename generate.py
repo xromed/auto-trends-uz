@@ -82,6 +82,22 @@ def make_fallback_trend(brand, base_value, length=12):
     return values
 
 
+MONTH_NAMES = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек']
+
+
+def rolling_labels(n=12):
+    """Подписи последних n месяцев, заканчивая текущим."""
+    now = datetime.utcnow()
+    y, m = now.year, now.month
+    out = []
+    for _ in range(n):
+        out.append(MONTH_NAMES[m - 1] + " " + str(y)[2:])
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    return out[::-1]
+
+
 def resample_monthly(df, columns):
     """Группируем недельные данные pytrends по месяцам, берём последние 12."""
     monthly = defaultdict(lambda: defaultdict(list))
@@ -96,7 +112,8 @@ def resample_monthly(df, columns):
         for col in columns:
             vals = monthly[key].get(col, [0])
             result[col].append(round(sum(vals) / len(vals)) if vals else 0)
-    return result
+    labels = [MONTH_NAMES[m - 1] + " " + str(y)[2:] for (y, m) in sorted_keys]
+    return result, labels
 
 
 def fetch_trends():
@@ -153,12 +170,15 @@ def fetch_trends():
     # Получаем реальную историю топ-5 брендов за 12 месяцев
     top5 = [k for k, _ in sorted(brands.items(), key=lambda x: x[1], reverse=True)[:5]]
     trend_history = {}
+    trend_labels = []
+    trend_source = "fallback"
     try:
         pytrends.build_payload(top5, cat=47, timeframe="today 12-m", geo="UZ")
         time.sleep(3)
         df12 = pytrends.interest_over_time()
         if not df12.empty:
-            trend_history = resample_monthly(df12, top5)
+            trend_history, trend_labels = resample_monthly(df12, top5)
+            trend_source = "real"
             print(f"  История трендов получена: {len(list(trend_history.values())[0])} месяцев")
     except Exception as e:
         print(f"  Ошибка истории трендов: {e}")
@@ -166,6 +186,8 @@ def fetch_trends():
     # Если история не получена — используем детерминированный fallback
     if not trend_history:
         trend_history = {b: make_fallback_trend(b, brands[b]) for b in top5}
+        trend_labels = rolling_labels(12)
+        trend_source = "fallback"
 
     # Daily тренд за последний месяц
     daily_data = {"labels": [], "series": {b: [] for b in top5}}
@@ -195,7 +217,7 @@ def fetch_trends():
                 vals.append(round(v))
             daily_data["series"][b] = vals
 
-    return {"brands": brands, "models": models, "trend_history": trend_history, "daily_data": daily_data}
+    return {"brands": brands, "models": models, "trend_history": trend_history, "trend_labels": trend_labels, "trend_source": trend_source, "daily_data": daily_data}
 
 
 def build_html(data):
@@ -210,6 +232,10 @@ def build_html(data):
         top5 = sorted(data["brands"].items(), key=lambda x: x[1], reverse=True)[:5]
         trend_history = {b: make_fallback_trend(b, v) for b, v in top5}
     trend_json = json.dumps(trend_history, ensure_ascii=False)
+    n_pts = len(next(iter(trend_history.values()), []))
+    trend_labels = data.get("trend_labels") or rolling_labels(n_pts or 12)
+    trend_labels_json = json.dumps(trend_labels, ensure_ascii=False)
+    trend_sub = "Симуляция на основе текущих индексов" if data.get("trend_source", "fallback") != "real" else "Google Trends · UZ · помесячно (среднее за месяц)"
     # Для моделей добавляем бренд в ключ: "Cobalt (Chevrolet)"
     models_labeled = {
         f"{model} ({MODEL_BRANDS.get(model, '?')})": val
@@ -316,7 +342,7 @@ def build_html(data):
   </div>
   <div style="height:18px"></div>
   <div class="card">
-    <div class="card-head"><div class="card-icon ci-purple">📈</div><div><div class="card-title">Динамика — топ-5 брендов (12 мес.)</div><div class="card-sub">Симуляция на основе текущих индексов</div></div></div>
+    <div class="card-head"><div class="card-icon ci-purple">📈</div><div><div class="card-title">Динамика — топ-5 брендов (12 мес.)</div><div class="card-sub">{trend_sub}</div></div></div>
     <div class="chart-box-lg"><canvas id="trendChart"></canvas></div>
   </div>
   <div class="card" id="card-brands-table">
@@ -370,7 +396,7 @@ def build_html(data):
   </div>
 </div>
 <script>
-const MONTHS=['Июл','Авг','Сен','Окт','Ноя','Дек','Янв','Фев','Мар','Апр','Май','Июн'];
+const MONTHS={trend_labels_json};
 const C=['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#f97316','#6366f1','#14b8a6','#f43f5e','#a855f7','#0ea5e9','#22c55e'];
 const BRANDS={brands_json};
 const MODELS={models_json};
